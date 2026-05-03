@@ -31,12 +31,14 @@ if menu == "Dashboard":
     df = get_data("SELECT nama, harga, stok FROM produk")
 
     if not df.empty:
-        total_stok = (df["stok"] * df["harga"]).sum()
+        df["harga"] = df["harga"].astype(int)
+        df["stok"] = df["stok"].astype(int)
+
+        total = int((df["stok"] * df["harga"]).sum())
 
         col1, col2 = st.columns(2)
-
-        col1.metric("📥 Stok Masuk", f"Rp {total_stok:,}")
-        col2.metric("📦 Sisa Stok", f"Rp {total_stok:,}")
+        col1.metric("📥 Stok Masuk", f"Rp {total:,}")
+        col2.metric("📦 Sisa Stok", f"Rp {total:,}")
 
         st.dataframe(df, use_container_width=True)
 
@@ -55,12 +57,12 @@ elif menu == "Barang Masuk":
         if data:
             c.execute(
                 "UPDATE produk SET stok = stok + %s WHERE id=%s",
-                (jumlah, data[0])
+                (int(jumlah), int(data[0]))
             )
         else:
             c.execute(
                 "INSERT INTO produk (nama, harga, stok) VALUES (%s,%s,%s)",
-                (nama, harga, jumlah)
+                (nama, int(harga), int(jumlah))
             )
 
         conn.commit()
@@ -73,6 +75,9 @@ elif menu == "Barang Keluar":
     df = get_data("SELECT id, nama, harga, stok FROM produk")
 
     if not df.empty:
+        df["harga"] = df["harga"].astype(int)
+        df["stok"] = df["stok"].astype(int)
+
         produk = st.selectbox("Produk", df["nama"])
         owner = st.text_input("Nama Owner")
         jumlah = st.number_input("Jumlah", 1)
@@ -80,22 +85,27 @@ elif menu == "Barang Keluar":
         if st.button("Proses"):
             row = df[df["nama"] == produk].iloc[0]
 
-            if jumlah > row["stok"]:
+            if int(jumlah) > int(row["stok"]):
                 st.error("Stok tidak cukup")
             else:
-                total = jumlah * row["harga"]
+                total = int(jumlah) * int(row["harga"])
 
                 # update stok
                 c.execute(
                     "UPDATE produk SET stok = stok - %s WHERE id=%s",
-                    (jumlah, int(row["id"]))
+                    (int(jumlah), int(row["id"]))
                 )
 
-                # simpan transaksi
+                # insert transaksi
                 c.execute("""
                     INSERT INTO transaksi (owner, produk, jumlah, total, waktu)
                     VALUES (%s,%s,%s,%s,NOW())
-                """, (owner, produk, jumlah, total))
+                """, (
+                    owner,
+                    produk,
+                    int(jumlah),
+                    int(total)
+                ))
 
                 conn.commit()
                 st.success("Barang keluar berhasil")
@@ -121,10 +131,10 @@ elif menu == "Owner Order":
             owner = row["owner"]
 
             df_owner = df_t[df_t["owner"] == owner]
-            total = df_owner["total"].sum()
+            total = int(df_owner["total"].sum())
 
             df_b = df_p[df_p["owner"] == owner] if not df_p.empty else pd.DataFrame()
-            sudah = df_b["jumlah"].sum() if not df_b.empty else 0
+            sudah = int(df_b["jumlah"].sum()) if not df_b.empty else 0
 
             sisa = total - sudah
             status = "Lunas" if sisa <= 0 else "Belum Lunas"
@@ -147,7 +157,7 @@ elif menu == "Owner Order":
                     c.execute("""
                         INSERT INTO pembayaran (owner, jumlah, metode)
                         VALUES (%s,%s,%s)
-                    """, (owner, bayar, metode))
+                    """, (owner, int(bayar), metode))
                     conn.commit()
                     st.success("Pembayaran masuk")
 
@@ -163,7 +173,7 @@ elif menu == "Pengeluaran":
         c.execute("""
             INSERT INTO pengeluaran (jumlah, metode, keterangan)
             VALUES (%s,%s,%s)
-        """, (jumlah, metode, ket))
+        """, (int(jumlah), metode, ket))
         conn.commit()
         st.success("Pengeluaran disimpan")
 
@@ -200,9 +210,9 @@ elif menu == "Closing":
     df_b = get_data("SELECT jumlah, metode FROM pembayaran")
     df_k = get_data("SELECT jumlah FROM pengeluaran")
 
-    cash = df_b[df_b["metode"]=="cash"]["jumlah"].sum() if not df_b.empty else 0
-    bank = df_b[df_b["metode"]=="bank"]["jumlah"].sum() if not df_b.empty else 0
-    keluar = df_k["jumlah"].sum() if not df_k.empty else 0
+    cash = int(df_b[df_b["metode"]=="cash"]["jumlah"].sum()) if not df_b.empty else 0
+    bank = int(df_b[df_b["metode"]=="bank"]["jumlah"].sum()) if not df_b.empty else 0
+    keluar = int(df_k["jumlah"].sum()) if not df_k.empty else 0
 
     saldo = (cash + bank) - keluar
 
