@@ -9,7 +9,7 @@ st.set_page_config(page_title="Toko App", layout="wide")
 conn = psycopg2.connect(st.secrets["DB_URL"])
 c = conn.cursor()
 
-# ================= AUTO CREATE TABLE =================
+# ================= AUTO TABLE =================
 c.execute("""
 CREATE TABLE IF NOT EXISTS pembayaran (
     id SERIAL PRIMARY KEY,
@@ -84,19 +84,14 @@ elif menu == "Barang Masuk":
             data = c.fetchone()
 
             if data:
-                c.execute(
-                    "UPDATE produk SET stok = stok + %s WHERE id=%s",
-                    (int(jumlah), int(data[0]))
-                )
+                c.execute("UPDATE produk SET stok = stok + %s WHERE id=%s",
+                          (int(jumlah), int(data[0])))
             else:
-                c.execute(
-                    "INSERT INTO produk (nama, harga, stok) VALUES (%s,%s,%s)",
-                    (nama, int(harga), int(jumlah))
-                )
+                c.execute("INSERT INTO produk (nama, harga, stok) VALUES (%s,%s,%s)",
+                          (nama, int(harga), int(jumlah)))
 
             conn.commit()
             st.success("Barang masuk berhasil")
-
         except:
             st.error("Error barang masuk")
 
@@ -123,10 +118,8 @@ elif menu == "Barang Keluar":
                 else:
                     total = int(jumlah) * int(row["harga"])
 
-                    c.execute(
-                        "UPDATE produk SET stok = stok - %s WHERE id=%s",
-                        (int(jumlah), int(row["id"]))
-                    )
+                    c.execute("UPDATE produk SET stok = stok - %s WHERE id=%s",
+                              (int(jumlah), int(row["id"])))
 
                     c.execute("""
                         INSERT INTO transaksi (owner, produk, jumlah, total, waktu)
@@ -135,9 +128,8 @@ elif menu == "Barang Keluar":
 
                     conn.commit()
                     st.success("Barang keluar berhasil")
-
             except:
-                st.error("Error barang keluar")
+                st.error("Error transaksi")
 
 # ================= OWNER ORDER =================
 elif menu == "Owner Order":
@@ -156,6 +148,16 @@ elif menu == "Owner Order":
     if not df_t.empty:
         owners = df_t.groupby("owner").first().reset_index()
 
+        # HEADER
+        col1, col2, col3, col4, col5 = st.columns([1,3,2,2,2])
+        col1.write("No")
+        col2.write("Owner")
+        col3.write("Status")
+        col4.write("Sisa")
+        col5.write("Edit")
+
+        st.markdown("---")
+
         for i, row in owners.iterrows():
             owner = row["owner"]
 
@@ -165,32 +167,36 @@ elif menu == "Owner Order":
             bayar = int(df_p[df_p["owner"] == owner]["jumlah"].sum()) if not df_p.empty else 0
             sisa = total - bayar
 
-            status = "✅ Lunas" if sisa <= 0 else "❌ Belum Lunas"
+            status = "✅ Lunas" if sisa <= 0 else "❌ Belum"
 
-            st.markdown("---")
-            col1, col2, col3, col4 = st.columns([1,3,2,2])
+            col1, col2, col3, col4, col5 = st.columns([1,3,2,2,2])
 
             col1.write(i+1)
             col2.write(owner)
             col3.write(status)
             col4.write(f"Rp {sisa:,}")
 
-            # ===== EDIT / PEMBAYARAN =====
-            with st.expander("Edit / Pembayaran"):
-                st.write(f"Total: Rp {total:,}")
-                st.write(f"Sudah Bayar: Rp {bayar:,}")
-                st.write(f"Sisa: Rp {sisa:,}")
+            if col5.button("Edit", key=f"edit{i}"):
+                st.session_state[f"show_{i}"] = True
+
+            if st.session_state.get(f"show_{i}", False):
+                st.dataframe(df_owner, use_container_width=True)
 
                 bayar_input = st.number_input("Bayar", key=f"bayar{i}")
                 metode = st.selectbox("Metode", ["cash","bank"], key=f"metode{i}")
 
-                if st.button("Simpan Pembayaran", key=f"simpan{i}"):
+                if st.button("Simpan", key=f"simpan{i}"):
                     c.execute("""
                         INSERT INTO pembayaran (owner, jumlah, metode)
                         VALUES (%s,%s,%s)
                     """, (owner, int(bayar_input), metode))
                     conn.commit()
-                    st.success("Pembayaran tersimpan")
+                    st.success("Pembayaran masuk")
+
+                if st.button("Tutup", key=f"tutup{i}"):
+                    st.session_state[f"show_{i}"] = False
+
+            st.markdown("---")
 
 # ================= PENGELUARAN =================
 elif menu == "Pengeluaran":
@@ -230,7 +236,7 @@ elif menu == "Closing":
 
     st.markdown("---")
 
-    st.metric("Cash Masuk", f"Rp {cash:,}")
+    st.metric("Cash", f"Rp {cash:,}")
     st.metric("Transfer", f"Rp {bank:,}")
 
     st.success(f"Balance: Rp {total_keluar + total_sisa:,}")
