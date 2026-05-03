@@ -10,6 +10,19 @@ st.set_page_config(page_title="Toko App", layout="wide")
 conn = psycopg2.connect(st.secrets["DB_URL"])
 c = conn.cursor()
 
+# ================= AUTO CREATE TABLE =================
+c.execute("""
+CREATE TABLE IF NOT EXISTS barang_masuk (
+    id SERIAL PRIMARY KEY,
+    produk TEXT,
+    jumlah INTEGER,
+    harga INTEGER,
+    waktu TIMESTAMP DEFAULT NOW()
+);
+""")
+conn.commit()
+
+# ================= CACHE =================
 @st.cache_data(ttl=5)
 def get_data(q):
     return pd.read_sql(q, conn)
@@ -56,7 +69,6 @@ if menu == "Dashboard":
         df = df.merge(keluar, left_on="nama", right_on="produk", how="left")
         df["jumlah_y"] = df["jumlah_y"].fillna(0)
 
-        # perhitungan profesional
         df["Stok Masuk"] = df["jumlah_x"]
         df["Sisa Stok"] = df["stok"]
 
@@ -79,7 +91,7 @@ elif menu == "Barang Masuk":
 
     if st.button("Simpan"):
 
-        # simpan ke log masuk
+        # simpan histori masuk
         c.execute("""
             INSERT INTO barang_masuk (produk,jumlah,harga)
             VALUES (%s,%s,%s)
@@ -101,7 +113,7 @@ elif menu == "Barang Masuk":
             )
 
         conn.commit()
-        st.success("Barang masuk tersimpan")
+        st.success("Barang masuk berhasil")
 
 # ================= BARANG KELUAR =================
 elif menu == "Barang Keluar":
@@ -138,7 +150,7 @@ elif menu == "Barang Keluar":
                 conn.commit()
                 st.success("Barang keluar berhasil")
 
-# ================= OWNER =================
+# ================= OWNER ORDER =================
 elif menu == "Owner Order":
     st.title("📋 Data Owner")
 
@@ -171,6 +183,22 @@ elif menu == "Owner Order":
             col2.write(owner)
             col3.write(status)
             col4.write(f"Rp {sisa:,}")
+
+# ================= PENGELUARAN =================
+elif menu == "Pengeluaran":
+    st.title("💸 Pengeluaran")
+
+    jumlah = st.number_input("Jumlah")
+    metode = st.selectbox("Metode", ["cash","bank"])
+    ket = st.text_input("Keterangan")
+
+    if st.button("Simpan"):
+        c.execute("""
+            INSERT INTO pengeluaran (jumlah, metode, keterangan)
+            VALUES (%s,%s,%s)
+        """, (int(jumlah), metode, ket))
+        conn.commit()
+        st.success("Pengeluaran disimpan")
 
 # ================= CLOSING =================
 elif menu == "Closing":
