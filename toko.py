@@ -34,13 +34,21 @@ if menu == "Dashboard":
         df["harga"] = df["harga"].astype(int)
         df["stok"] = df["stok"].astype(int)
 
-        total = int((df["stok"] * df["harga"]).sum())
+        # kita anggap stok sekarang = stok masuk (akumulasi)
+        df["Stok Masuk"] = df["stok"]
+        df["Sisa Stok"] = df["stok"]
+
+        total_masuk = int((df["Stok Masuk"] * df["harga"]).sum())
+        total_sisa = int((df["Sisa Stok"] * df["harga"]).sum())
 
         col1, col2 = st.columns(2)
-        col1.metric("📥 Stok Masuk", f"Rp {total:,}")
-        col2.metric("📦 Sisa Stok", f"Rp {total:,}")
+        col1.metric("📥 Stok Masuk", f"Rp {total_masuk:,}")
+        col2.metric("📦 Sisa Stok", f"Rp {total_sisa:,}")
 
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(
+            df[["nama", "Stok Masuk", "Sisa Stok"]],
+            use_container_width=True
+        )
 
 # ================= BARANG MASUK =================
 elif menu == "Barang Masuk":
@@ -90,13 +98,11 @@ elif menu == "Barang Keluar":
             else:
                 total = int(jumlah) * int(row["harga"])
 
-                # update stok
                 c.execute(
                     "UPDATE produk SET stok = stok - %s WHERE id=%s",
                     (int(jumlah), int(row["id"]))
                 )
 
-                # insert transaksi
                 c.execute("""
                     INSERT INTO transaksi (owner, produk, jumlah, total, waktu)
                     VALUES (%s,%s,%s,%s,NOW())
