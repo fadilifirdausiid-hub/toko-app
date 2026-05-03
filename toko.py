@@ -48,7 +48,6 @@ if menu == "Dashboard":
         df_tampil.columns = ["Nama Produk", "Masuk", "Sisa"]
 
         st.dataframe(df_tampil, use_container_width=True)
-
     else:
         st.warning("Belum ada data")
 
