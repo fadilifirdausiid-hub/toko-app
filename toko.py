@@ -4,7 +4,7 @@ import pandas as pd
 
 st.set_page_config(page_title="Toko App", layout="wide")
 
-# ================= STYLE UI =================
+# ================= STYLE =================
 st.markdown("""
 <style>
 .owner-box {
@@ -40,13 +40,6 @@ CREATE TABLE IF NOT EXISTS pengeluaran (
 );
 """)
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS setoran (
-    id SERIAL PRIMARY KEY,
-    jumlah INTEGER
-);
-""")
-
 conn.commit()
 
 # ================= SAFE QUERY =================
@@ -72,35 +65,54 @@ if menu == "Dashboard":
     st.title("📊 Dashboard")
 
     df_produk = get_data("SELECT nama, harga, stok FROM produk")
+    df_keluar = get_data("SELECT produk, jumlah FROM transaksi")
     df_bayar = get_data("SELECT jumlah, metode FROM pembayaran")
     df_pengeluaran = get_data("SELECT jumlah, metode FROM pengeluaran")
-    df_setor = get_data("SELECT jumlah FROM setoran")
 
     if not df_produk.empty:
-        df_produk["TOTAL"] = df_produk["stok"] * df_produk["harga"]
+        df_produk["stok"] = df_produk["stok"].astype(int)
+        df_produk["harga"] = df_produk["harga"].astype(int)
 
-        total_sisa = int(df_produk["TOTAL"].sum())
+        if not df_keluar.empty:
+            keluar = df_keluar.groupby("produk")["jumlah"].sum().reset_index()
+        else:
+            keluar = pd.DataFrame(columns=["produk","jumlah"])
 
+        df = df_produk.merge(keluar, left_on="nama", right_on="produk", how="left")
+        df["jumlah"] = df["jumlah"].fillna(0)
+
+        # ===== LOGIKA STOK =====
+        df["Stok Masuk"] = df["stok"] + df["jumlah"]
+        df["Sisa Stok"] = df["stok"]
+
+        total_masuk = int((df["Stok Masuk"] * df["harga"]).sum())
+        total_sisa = int((df["Sisa Stok"] * df["harga"]).sum())
+
+        # ===== SALDO =====
         cash_in = int(df_bayar[df_bayar["metode"]=="cash"]["jumlah"].sum()) if not df_bayar.empty else 0
         bank_in = int(df_bayar[df_bayar["metode"]=="bank"]["jumlah"].sum()) if not df_bayar.empty else 0
 
         cash_out = int(df_pengeluaran[df_pengeluaran["metode"]=="cash"]["jumlah"].sum()) if not df_pengeluaran.empty else 0
         bank_out = int(df_pengeluaran[df_pengeluaran["metode"]=="bank"]["jumlah"].sum()) if not df_pengeluaran.empty else 0
 
-        setor = int(df_setor["jumlah"].sum()) if not df_setor.empty else 0
-
-        deposit = 2000000
-
         saldo_cash = cash_in - cash_out
-        saldo_bank = (bank_in - bank_out - setor) + deposit
+        saldo_bank = bank_in - bank_out
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("📦 Sisa Stok", f"Rp {total_sisa:,}")
-        c2.metric("💵 Cash", f"Rp {saldo_cash:,}")
-        c3.metric("🏦 Bank", f"Rp {saldo_bank:,}")
+        # ===== UI =====
+        c1, c2 = st.columns(2)
+        c1.metric("📥 Stok Masuk", f"Rp {total_masuk:,}")
+        c2.metric("📦 Sisa Stok", f"Rp {total_sisa:,}")
+
+        st.markdown("---")
+
+        c3, c4 = st.columns(2)
+        c3.metric("💵 Cash", f"Rp {saldo_cash:,}")
+        c4.metric("🏦 Bank", f"Rp {saldo_bank:,}")
 
         if saldo_cash < 0 or saldo_bank < 0:
             st.warning("⚠️ Saldo minus")
+
+        st.dataframe(df[["nama","Stok Masuk","Sisa Stok"]], use_container_width=True)
 
 # ================= BARANG MASUK =================
 elif menu == "Barang Masuk":
@@ -171,11 +183,9 @@ elif menu == "Owner Order":
             bayar = int(df_p[df_p["owner"] == owner]["jumlah"].sum()) if not df_p.empty else 0
             sisa = total - bayar
 
-            # ===== BOX =====
             st.markdown('<div class="owner-box">', unsafe_allow_html=True)
 
             col = st.columns([3,2,2,2])
-
             col[0].write(f"👤 {owner}")
             col[1].write("✅ Lunas" if sisa <= 0 else "❌ Belum")
             col[2].write(f"Rp {sisa:,}")
@@ -185,7 +195,6 @@ elif menu == "Owner Order":
 
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # ===== FORM BAYAR =====
         if "owner" in st.session_state:
             st.markdown("---")
             st.subheader(f"Bayar: {st.session_state['owner']}")
@@ -226,7 +235,6 @@ elif menu == "Closing":
 
     df_bayar = get_data("SELECT jumlah, metode FROM pembayaran")
     df_pengeluaran = get_data("SELECT jumlah, metode FROM pengeluaran")
-    df_setor = get_data("SELECT jumlah FROM setoran")
 
     deposit = 2000000
 
@@ -236,24 +244,8 @@ elif menu == "Closing":
     cash_out = int(df_pengeluaran[df_pengeluaran["metode"]=="cash"]["jumlah"].sum()) if not df_pengeluaran.empty else 0
     bank_out = int(df_pengeluaran[df_pengeluaran["metode"]=="bank"]["jumlah"].sum()) if not df_pengeluaran.empty else 0
 
-    setor = int(df_setor["jumlah"].sum()) if not df_setor.empty else 0
-
     saldo_cash = cash - cash_out
-    saldo_bank = (bank - bank_out - setor) + deposit
+    saldo_bank = (bank - bank_out) + deposit
 
     st.metric("Cash", f"Rp {saldo_cash:,}")
-    st.metric("Bank (deposit aman 2jt)", f"Rp {saldo_bank:,}")
-
-    st.markdown("---")
-
-    st.subheader("Setoran ke Bos")
-    jml = st.number_input("Jumlah Setor")
-
-    if st.button("Setor"):
-        if jml > (saldo_bank - deposit):
-            st.error("Saldo bank tidak cukup (deposit tidak boleh dipakai)")
-        else:
-            c.execute("INSERT INTO setoran (jumlah) VALUES (%s)", (int(jml),))
-            conn.commit()
-            st.success("Setor berhasil")
-            st.rerun()
+    st.metric("Bank (deposit 2jt aman)", f"Rp {saldo_bank:,}")
