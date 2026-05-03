@@ -1,4 +1,6 @@
 import streamlit as st
+st.title("VERSI BARU 🔥🔥🔥")
+import streamlit as st
 import psycopg2
 import pandas as pd
 from datetime import datetime
