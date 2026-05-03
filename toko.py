@@ -111,7 +111,7 @@ elif menu == "Barang Keluar":
             c.execute("""
                 INSERT INTO transaksi (owner,produk,jumlah,total,waktu)
                 VALUES (%s,%s,%s,%s,NOW())
-            """, (owner, int(row["id"]), jumlah, total))
+            """, (owner, produk, jumlah, total))
 
             conn.commit()
             st.success("Berhasil")
