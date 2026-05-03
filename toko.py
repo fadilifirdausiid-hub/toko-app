@@ -5,7 +5,7 @@ import plotly.express as px
 from datetime import date
 
 # ================= CONFIG =================
-st.set_page_config(page_title="Toko App Premium", layout="wide")
+st.set_page_config(page_title="Toko App", layout="wide")
 
 # ================= STYLE =================
 st.markdown("""
@@ -24,13 +24,6 @@ st.markdown("""
 # ================= KONEKSI =================
 conn = psycopg2.connect(st.secrets["DB_URL"])
 c = conn.cursor()
-
-# ================= AUTO FIX DATABASE =================
-c.execute("""
-ALTER TABLE produk 
-ADD COLUMN IF NOT EXISTS stok_masuk INTEGER DEFAULT 0;
-""")
-conn.commit()
 
 # ================= CACHE =================
 @st.cache_data(ttl=10)
@@ -51,10 +44,10 @@ menu = st.sidebar.radio("Menu", [
 if menu == "Dashboard":
     st.title("📊 Dashboard")
 
-    df = get_data("SELECT nama, harga, stok, stok_masuk FROM produk")
+    df = get_data("SELECT nama, harga, stok FROM produk")
 
     if not df.empty:
-        masuk = (df["stok_masuk"] * df["harga"]).sum()
+        masuk = (df["stok"] * df["harga"]).sum()
         sisa = (df["stok"] * df["harga"]).sum()
 
         col1, col2 = st.columns(2)
@@ -91,15 +84,14 @@ elif menu == "Barang Masuk":
         if data:
             c.execute("""
                 UPDATE produk 
-                SET stok = stok + %s,
-                stok_masuk = stok_masuk + %s
+                SET stok = stok + %s
                 WHERE id=%s
-            """, (jumlah, jumlah, data[0]))
+            """, (jumlah, data[0]))
         else:
             c.execute("""
-                INSERT INTO produk (nama,harga,stok,stok_masuk)
-                VALUES (%s,%s,%s,%s)
-            """, (nama, harga, jumlah, jumlah))
+                INSERT INTO produk (nama,harga,stok)
+                VALUES (%s,%s,%s)
+            """, (nama, harga, jumlah))
 
         conn.commit()
         st.success("Barang masuk berhasil")
@@ -110,28 +102,29 @@ elif menu == "Barang Keluar":
 
     df = get_data("SELECT id, nama, harga, stok FROM produk")
 
-    produk = st.selectbox("Produk", df["nama"])
-    owner = st.text_input("Nama Owner")
-    jumlah = st.number_input("Jumlah", 1)
+    if not df.empty:
+        produk = st.selectbox("Produk", df["nama"])
+        owner = st.text_input("Nama Owner")
+        jumlah = st.number_input("Jumlah", 1)
 
-    if st.button("Proses"):
-        row = df[df["nama"] == produk].iloc[0]
+        if st.button("Proses"):
+            row = df[df["nama"] == produk].iloc[0]
 
-        if jumlah > row["stok"]:
-            st.error("Stok tidak cukup")
-        else:
-            total = jumlah * row["harga"]
+            if jumlah > row["stok"]:
+                st.error("Stok tidak cukup")
+            else:
+                total = jumlah * row["harga"]
 
-            c.execute("UPDATE produk SET stok = stok - %s WHERE id=%s",
-                      (jumlah, int(row["id"])))
+                c.execute("UPDATE produk SET stok = stok - %s WHERE id=%s",
+                          (jumlah, int(row["id"])))
 
-            c.execute("""
-                INSERT INTO transaksi (owner, produk, jumlah, total, waktu)
-                VALUES (%s,%s,%s,%s,NOW())
-            """, (owner, produk, jumlah, total))
+                c.execute("""
+                    INSERT INTO transaksi (owner, produk, jumlah, total, waktu)
+                    VALUES (%s,%s,%s,%s,NOW())
+                """, (owner, produk, jumlah, total))
 
-            conn.commit()
-            st.success("Barang keluar berhasil")
+                conn.commit()
+                st.success("Barang keluar berhasil")
 
 # ================= OWNER ORDER =================
 elif menu == "Owner Order":
@@ -210,12 +203,12 @@ elif menu == "Pengeluaran":
 elif menu == "Closing":
     st.title("📊 Closing")
 
-    df_p = get_data("SELECT harga, stok, stok_masuk FROM produk")
+    df_p = get_data("SELECT harga, stok FROM produk")
     df_t = get_data("SELECT total FROM transaksi")
     df_b = get_data("SELECT jumlah, metode FROM pembayaran")
     df_k = get_data("SELECT jumlah FROM pengeluaran")
 
-    masuk = (df_p["stok_masuk"] * df_p["harga"]).sum() if not df_p.empty else 0
+    masuk = (df_p["stok"] * df_p["harga"]).sum() if not df_p.empty else 0
     sisa = (df_p["stok"] * df_p["harga"]).sum() if not df_p.empty else 0
     jual = df_t["total"].sum() if not df_t.empty else 0
 
