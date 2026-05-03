@@ -7,35 +7,30 @@ from datetime import date
 # ================= CONFIG =================
 st.set_page_config(page_title="Toko App Premium", layout="wide")
 
-# ================= STYLE PREMIUM =================
+# ================= STYLE =================
 st.markdown("""
 <style>
 .main {background-color:#f5f7fa;}
 .card {
     border-radius:12px;
-    padding:20px;
+    padding:18px;
     background:white;
     box-shadow:0 2px 8px rgba(0,0,0,0.05);
-    margin-bottom:15px;
-}
-.title {
-    font-size:20px;
-    font-weight:600;
+    margin-bottom:12px;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ================= KONEKSI =================
 conn = psycopg2.connect(
-    "postgresql://postgres.hnetawqayprlvubnouui:Fadili161299@aws-1-ap-south-1.pooler.supabase.com:5432/postgres"
+    "postgresql://postgres.xxx:Fadili161299@aws-xxx.pooler.supabase.com:5432/postgres"
 )
 c = conn.cursor()
 
+# ================= CACHE =================
+@st.cache_data(ttl=10)
 def get_data(q):
-    try:
-        return pd.read_sql(q, conn)
-    except:
-        return pd.DataFrame()
+    return pd.read_sql(q, conn)
 
 # ================= MENU =================
 menu = st.sidebar.radio("Menu", [
@@ -51,24 +46,29 @@ menu = st.sidebar.radio("Menu", [
 if menu == "Dashboard":
     st.title("📊 Dashboard")
 
-    df = get_data("SELECT * FROM produk")
-    df_t = get_data("SELECT * FROM transaksi")
+    df = get_data("SELECT nama, harga, stok, stok_masuk FROM produk")
 
     if not df.empty:
         masuk = (df["stok_masuk"] * df["harga"]).sum()
         sisa = (df["stok"] * df["harga"]).sum()
 
         col1, col2 = st.columns(2)
-        col1.markdown(f"<div class='card'><div class='title'>Barang Masuk</div><h2>Rp {masuk:,.0f}</h2></div>", unsafe_allow_html=True)
-        col2.markdown(f"<div class='card'><div class='title'>Sisa Stok</div><h2>Rp {sisa:,.0f}</h2></div>", unsafe_allow_html=True)
+        col1.markdown(f"<div class='card'><h3>Barang Masuk</h3><h2>Rp {masuk:,.0f}</h2></div>", unsafe_allow_html=True)
+        col2.markdown(f"<div class='card'><h3>Sisa Stok</h3><h2>Rp {sisa:,.0f}</h2></div>", unsafe_allow_html=True)
 
     st.markdown("### 📈 Grafik Penjualan")
+
+    df_t = get_data("""
+        SELECT total, waktu FROM transaksi 
+        ORDER BY waktu DESC LIMIT 200
+    """)
 
     if not df_t.empty:
         df_t["tanggal"] = pd.to_datetime(df_t["waktu"]).dt.date
         grafik = df_t.groupby("tanggal")["total"].sum().reset_index()
 
         fig = px.line(grafik, x="tanggal", y="total", markers=True)
+        fig.update_layout(height=300)
         st.plotly_chart(fig, use_container_width=True)
 
 # ================= BARANG MASUK =================
@@ -103,7 +103,7 @@ elif menu == "Barang Masuk":
 elif menu == "Barang Keluar":
     st.title("📤 Barang Keluar")
 
-    df = get_data("SELECT * FROM produk")
+    df = get_data("SELECT id, nama, harga, stok FROM produk")
 
     produk = st.selectbox("Produk", df["nama"])
     owner = st.text_input("Owner")
@@ -121,8 +121,8 @@ elif menu == "Barang Keluar":
                       (jumlah, int(row["id"])))
 
             c.execute("""
-                INSERT INTO transaksi (owner, produk, jumlah, total)
-                VALUES (%s,%s,%s,%s)
+                INSERT INTO transaksi (owner, produk, jumlah, total, waktu)
+                VALUES (%s,%s,%s,%s,NOW())
             """, (owner, produk, jumlah, total))
 
             conn.commit()
@@ -134,13 +134,15 @@ elif menu == "Owner Order":
 
     tgl = st.date_input("Filter Tanggal", value=date.today())
 
-    df_t = get_data("SELECT * FROM transaksi")
-    df_p = get_data("SELECT * FROM pembayaran")
+    df_t = get_data(f"""
+        SELECT owner, produk, jumlah, total, waktu 
+        FROM transaksi 
+        WHERE DATE(waktu) = '{tgl}'
+    """)
+
+    df_p = get_data("SELECT owner, jumlah, metode FROM pembayaran")
 
     if not df_t.empty:
-        df_t["tanggal"] = pd.to_datetime(df_t["waktu"]).dt.date
-        df_t = df_t[df_t["tanggal"] == tgl]
-
         owners = df_t.groupby("owner").first().reset_index()
 
         for i, row in owners.iterrows():
@@ -164,7 +166,7 @@ elif menu == "Owner Order":
             col4.write(f"Rp {sisa:,.0f}")
 
             with st.expander("Detail & Edit"):
-                st.dataframe(df_owner[["produk","jumlah","total"]])
+                st.dataframe(df_owner)
 
                 st.write(f"Total: Rp {total:,.0f}")
                 st.write(f"Sudah Bayar: Rp {sudah:,.0f}")
@@ -203,18 +205,17 @@ elif menu == "Pengeluaran":
 elif menu == "Closing":
     st.title("📊 Closing")
 
-    df_p = get_data("SELECT * FROM produk")
-    df_t = get_data("SELECT * FROM transaksi")
-    df_b = get_data("SELECT * FROM pembayaran")
-    df_k = get_data("SELECT * FROM pengeluaran")
+    df_p = get_data("SELECT harga, stok, stok_masuk FROM produk")
+    df_t = get_data("SELECT total FROM transaksi")
+    df_b = get_data("SELECT jumlah, metode FROM pembayaran")
+    df_k = get_data("SELECT jumlah FROM pengeluaran")
 
-    masuk = (df_p["stok_masuk"] * df_p["harga"]).sum()
-    sisa = (df_p["stok"] * df_p["harga"]).sum()
-    jual = df_t["total"].sum()
+    masuk = (df_p["stok_masuk"] * df_p["harga"]).sum() if not df_p.empty else 0
+    sisa = (df_p["stok"] * df_p["harga"]).sum() if not df_p.empty else 0
+    jual = df_t["total"].sum() if not df_t.empty else 0
 
     cash = df_b[df_b["metode"]=="cash"]["jumlah"].sum() if not df_b.empty else 0
     bank = df_b[df_b["metode"]=="bank"]["jumlah"].sum() if not df_b.empty else 0
-
     keluar = df_k["jumlah"].sum() if not df_k.empty else 0
 
     saldo = (cash + bank) - keluar
