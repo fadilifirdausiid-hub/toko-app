@@ -4,6 +4,20 @@ import pandas as pd
 
 st.set_page_config(page_title="Toko App", layout="wide")
 
+# ================= STYLE UI =================
+st.markdown("""
+<style>
+.owner-box {
+    border: 1px solid #ddd;
+    padding: 12px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    background-color: #f8fafc;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ================= KONEKSI =================
 conn = psycopg2.connect(st.secrets["DB_URL"])
 c = conn.cursor()
 
@@ -35,6 +49,7 @@ CREATE TABLE IF NOT EXISTS setoran (
 
 conn.commit()
 
+# ================= SAFE QUERY =================
 @st.cache_data(ttl=10)
 def get_data(q):
     try:
@@ -42,6 +57,7 @@ def get_data(q):
     except:
         return pd.DataFrame()
 
+# ================= MENU =================
 menu = st.sidebar.radio("Menu", [
     "Dashboard",
     "Barang Masuk",
@@ -106,7 +122,7 @@ elif menu == "Barang Masuk":
                       (nama, int(harga), int(jumlah)))
 
         conn.commit()
-        st.success("OK")
+        st.success("Berhasil")
 
 # ================= BARANG KELUAR =================
 elif menu == "Barang Keluar":
@@ -136,9 +152,9 @@ elif menu == "Barang Keluar":
                 """, (owner, produk, int(jumlah), int(total)))
 
                 conn.commit()
-                st.success("OK")
+                st.success("Berhasil")
 
-# ================= OWNER =================
+# ================= OWNER ORDER =================
 elif menu == "Owner Order":
     st.title("📋 Owner Order")
 
@@ -155,19 +171,26 @@ elif menu == "Owner Order":
             bayar = int(df_p[df_p["owner"] == owner]["jumlah"].sum()) if not df_p.empty else 0
             sisa = total - bayar
 
+            # ===== BOX =====
+            st.markdown('<div class="owner-box">', unsafe_allow_html=True)
+
             col = st.columns([3,2,2,2])
-            col[0].write(owner)
-            col[1].write("Lunas" if sisa <= 0 else "Belum")
+
+            col[0].write(f"👤 {owner}")
+            col[1].write("✅ Lunas" if sisa <= 0 else "❌ Belum")
             col[2].write(f"Rp {sisa:,}")
 
             if col[3].button("Bayar", key=i):
                 st.session_state["owner"] = owner
 
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # ===== FORM BAYAR =====
         if "owner" in st.session_state:
             st.markdown("---")
-            st.write("Bayar:", st.session_state["owner"])
+            st.subheader(f"Bayar: {st.session_state['owner']}")
 
-            jml = st.number_input("Jumlah")
+            jml = st.number_input("Jumlah Bayar")
             metode = st.selectbox("Metode", ["cash","bank"])
 
             if st.button("Simpan"):
@@ -177,6 +200,7 @@ elif menu == "Owner Order":
                 """, (st.session_state["owner"], int(jml), metode))
 
                 conn.commit()
+                st.toast("Pembayaran masuk")
                 del st.session_state["owner"]
                 st.rerun()
 
@@ -194,7 +218,7 @@ elif menu == "Pengeluaran":
             VALUES (%s,%s,%s)
         """, (int(jumlah), metode, ket))
         conn.commit()
-        st.success("OK")
+        st.success("Berhasil")
 
 # ================= CLOSING =================
 elif menu == "Closing":
@@ -218,7 +242,7 @@ elif menu == "Closing":
     saldo_bank = (bank - bank_out - setor) + deposit
 
     st.metric("Cash", f"Rp {saldo_cash:,}")
-    st.metric("Bank (deposit 2jt aman)", f"Rp {saldo_bank:,}")
+    st.metric("Bank (deposit aman 2jt)", f"Rp {saldo_bank:,}")
 
     st.markdown("---")
 
