@@ -1,10 +1,29 @@
 import streamlit as st
 import psycopg2
 import pandas as pd
+import plotly.express as px
 from datetime import date
 
 # ================= CONFIG =================
-st.set_page_config(page_title="Toko App", layout="wide")
+st.set_page_config(page_title="Toko App Premium", layout="wide")
+
+# ================= STYLE PREMIUM =================
+st.markdown("""
+<style>
+.main {background-color:#f5f7fa;}
+.card {
+    border-radius:12px;
+    padding:20px;
+    background:white;
+    box-shadow:0 2px 8px rgba(0,0,0,0.05);
+    margin-bottom:15px;
+}
+.title {
+    font-size:20px;
+    font-weight:600;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ================= KONEKSI =================
 conn = psycopg2.connect(
@@ -12,7 +31,6 @@ conn = psycopg2.connect(
 )
 c = conn.cursor()
 
-# ================= HELPER =================
 def get_data(q):
     try:
         return pd.read_sql(q, conn)
@@ -20,12 +38,11 @@ def get_data(q):
         return pd.DataFrame()
 
 # ================= MENU =================
-menu = st.sidebar.selectbox("Menu", [
+menu = st.sidebar.radio("Menu", [
     "Dashboard",
     "Barang Masuk",
     "Barang Keluar",
     "Owner Order",
-    "Pembayaran",
     "Pengeluaran",
     "Closing"
 ])
@@ -35,16 +52,24 @@ if menu == "Dashboard":
     st.title("📊 Dashboard")
 
     df = get_data("SELECT * FROM produk")
+    df_t = get_data("SELECT * FROM transaksi")
 
     if not df.empty:
-        df["Masuk"] = df["stok_masuk"]
-        df["Sisa"] = df["stok"]
+        masuk = (df["stok_masuk"] * df["harga"]).sum()
+        sisa = (df["stok"] * df["harga"]).sum()
 
         col1, col2 = st.columns(2)
-        col1.metric("📥 Masuk", int(df["Masuk"].sum()))
-        col2.metric("📦 Sisa", int(df["Sisa"].sum()))
+        col1.markdown(f"<div class='card'><div class='title'>Barang Masuk</div><h2>Rp {masuk:,.0f}</h2></div>", unsafe_allow_html=True)
+        col2.markdown(f"<div class='card'><div class='title'>Sisa Stok</div><h2>Rp {sisa:,.0f}</h2></div>", unsafe_allow_html=True)
 
-        st.dataframe(df[["nama", "Masuk", "Sisa"]], use_container_width=True)
+    st.markdown("### 📈 Grafik Penjualan")
+
+    if not df_t.empty:
+        df_t["tanggal"] = pd.to_datetime(df_t["waktu"]).dt.date
+        grafik = df_t.groupby("tanggal")["total"].sum().reset_index()
+
+        fig = px.line(grafik, x="tanggal", y="total", markers=True)
+        st.plotly_chart(fig, use_container_width=True)
 
 # ================= BARANG MASUK =================
 elif menu == "Barang Masuk":
@@ -60,8 +85,10 @@ elif menu == "Barang Masuk":
 
         if data:
             c.execute("""
-                UPDATE produk SET stok = stok + %s,
-                stok_masuk = stok_masuk + %s WHERE id=%s
+                UPDATE produk 
+                SET stok = stok + %s,
+                stok_masuk = stok_masuk + %s
+                WHERE id=%s
             """, (jumlah, jumlah, data[0]))
         else:
             c.execute("""
@@ -105,7 +132,6 @@ elif menu == "Barang Keluar":
 elif menu == "Owner Order":
     st.title("📋 Data Owner")
 
-    # FILTER TANGGAL
     tgl = st.date_input("Filter Tanggal", value=date.today())
 
     df_t = get_data("SELECT * FROM transaksi")
@@ -117,8 +143,6 @@ elif menu == "Owner Order":
 
         owners = df_t.groupby("owner").first().reset_index()
 
-        st.markdown("### List Owner")
-
         for i, row in owners.iterrows():
             owner = row["owner"]
 
@@ -129,61 +153,51 @@ elif menu == "Owner Order":
             sudah = df_b["jumlah"].sum() if not df_b.empty else 0
 
             sisa = total - sudah
-            status = "✅ Lunas" if sisa <= 0 else "❌ Belum"
+            status = "✅ Lunas" if sisa <= 0 else "❌ Belum Lunas"
+
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
 
             col1, col2, col3, col4 = st.columns([1,3,2,2])
-
             col1.write(i+1)
-            col2.write(owner)
+            col2.write(f"**{owner}**")
             col3.write(status)
+            col4.write(f"Rp {sisa:,.0f}")
 
-            if col4.button("Edit", key=f"edit_{i}"):
-
-                st.markdown(f"### Detail {owner}")
-
+            with st.expander("Detail & Edit"):
                 st.dataframe(df_owner[["produk","jumlah","total"]])
 
-                st.write(f"Total: {total}")
-                st.write(f"Sudah Bayar: {sudah}")
-                st.write(f"Sisa: {sisa}")
+                st.write(f"Total: Rp {total:,.0f}")
+                st.write(f"Sudah Bayar: Rp {sudah:,.0f}")
+                st.write(f"Sisa: Rp {sisa:,.0f}")
 
-                bayar = st.number_input("Tambah Bayar", key=f"bayar_{i}")
+                bayar = st.number_input("Bayar", key=f"bayar{i}")
+                metode = st.selectbox("Metode", ["cash","bank"], key=f"metode{i}")
 
-                if st.button("Simpan Pembayaran", key=f"simpan_{i}"):
+                if st.button("Simpan", key=f"simpan{i}"):
                     c.execute("""
-                        INSERT INTO pembayaran (owner, jumlah, metode)
+                        INSERT INTO pembayaran (owner,jumlah,metode)
                         VALUES (%s,%s,%s)
-                    """, (owner, bayar, "cash"))
-
+                    """, (owner, bayar, metode))
                     conn.commit()
-                    st.success("Pembayaran masuk")
+                    st.success("Masuk pembayaran")
 
-# ================= PEMBAYARAN =================
-elif menu == "Pembayaran":
-    st.title("💳 Pembayaran Manual")
-
-    owner = st.text_input("Owner")
-    jumlah = st.number_input("Jumlah")
-
-    if st.button("Simpan"):
-        c.execute("INSERT INTO pembayaran (owner,jumlah,metode) VALUES (%s,%s,%s)",
-                  (owner, jumlah, "cash"))
-        conn.commit()
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= PENGELUARAN =================
 elif menu == "Pengeluaran":
     st.title("💸 Pengeluaran")
 
     jumlah = st.number_input("Jumlah")
+    metode = st.selectbox("Metode", ["cash","bank"])
     ket = st.text_input("Keterangan")
 
     if st.button("Simpan"):
         c.execute("""
-            INSERT INTO pengeluaran (jumlah,keterangan,metode)
+            INSERT INTO pengeluaran (jumlah,metode,keterangan)
             VALUES (%s,%s,%s)
-        """, (jumlah, ket, "cash"))
-
+        """, (jumlah, metode, ket))
         conn.commit()
+        st.success("Disimpan")
 
 # ================= CLOSING =================
 elif menu == "Closing":
@@ -197,16 +211,26 @@ elif menu == "Closing":
     masuk = (df_p["stok_masuk"] * df_p["harga"]).sum()
     sisa = (df_p["stok"] * df_p["harga"]).sum()
     jual = df_t["total"].sum()
-    bayar = df_b["jumlah"].sum()
-    keluar = df_k["jumlah"].sum()
 
-    hutang = jual - bayar
-    saldo = bayar - keluar
+    cash = df_b[df_b["metode"]=="cash"]["jumlah"].sum() if not df_b.empty else 0
+    bank = df_b[df_b["metode"]=="bank"]["jumlah"].sum() if not df_b.empty else 0
 
-    st.metric("Nilai Masuk", masuk)
-    st.metric("Sisa Stok", sisa)
-    st.metric("Penjualan", jual)
-    st.metric("Uang Masuk", bayar)
-    st.metric("Pengeluaran", keluar)
-    st.metric("Saldo", saldo)
-    st.metric("Hutang", hutang)
+    keluar = df_k["jumlah"].sum() if not df_k.empty else 0
+
+    saldo = (cash + bank) - keluar
+    hutang = jual - (cash + bank)
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Barang Masuk", f"Rp {masuk:,.0f}")
+    col2.metric("Sisa Stok", f"Rp {sisa:,.0f}")
+    col3.metric("Penjualan", f"Rp {jual:,.0f}")
+
+    col4, col5, col6 = st.columns(3)
+    col4.metric("Cash", f"Rp {cash:,.0f}")
+    col5.metric("Bank", f"Rp {bank:,.0f}")
+    col6.metric("Pengeluaran", f"Rp {keluar:,.0f}")
+
+    st.markdown("---")
+
+    st.metric("Saldo", f"Rp {saldo:,.0f}")
+    st.metric("Hutang Owner", f"Rp {hutang:,.0f}")
