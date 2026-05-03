@@ -1,5 +1,4 @@
 import streamlit as st
-st.cache_data.clear()
 import psycopg2
 import pandas as pd
 import plotly.express as px
@@ -25,6 +24,13 @@ st.markdown("""
 # ================= KONEKSI =================
 conn = psycopg2.connect(st.secrets["DB_URL"])
 c = conn.cursor()
+
+# ================= AUTO FIX DATABASE =================
+c.execute("""
+ALTER TABLE produk 
+ADD COLUMN IF NOT EXISTS stok_masuk INTEGER DEFAULT 0;
+""")
+conn.commit()
 
 # ================= CACHE =================
 @st.cache_data(ttl=10)
@@ -96,7 +102,7 @@ elif menu == "Barang Masuk":
             """, (nama, harga, jumlah, jumlah))
 
         conn.commit()
-        st.success("Berhasil")
+        st.success("Barang masuk berhasil")
 
 # ================= BARANG KELUAR =================
 elif menu == "Barang Keluar":
@@ -105,7 +111,7 @@ elif menu == "Barang Keluar":
     df = get_data("SELECT id, nama, harga, stok FROM produk")
 
     produk = st.selectbox("Produk", df["nama"])
-    owner = st.text_input("Owner")
+    owner = st.text_input("Nama Owner")
     jumlah = st.number_input("Jumlah", 1)
 
     if st.button("Proses"):
@@ -125,7 +131,7 @@ elif menu == "Barang Keluar":
             """, (owner, produk, jumlah, total))
 
             conn.commit()
-            st.success("Berhasil")
+            st.success("Barang keluar berhasil")
 
 # ================= OWNER ORDER =================
 elif menu == "Owner Order":
@@ -164,7 +170,7 @@ elif menu == "Owner Order":
             col3.write(status)
             col4.write(f"Rp {sisa:,.0f}")
 
-            with st.expander("Detail & Edit"):
+            with st.expander("Detail & Pembayaran"):
                 st.dataframe(df_owner)
 
                 st.write(f"Total: Rp {total:,.0f}")
@@ -174,13 +180,13 @@ elif menu == "Owner Order":
                 bayar = st.number_input("Bayar", key=f"bayar{i}")
                 metode = st.selectbox("Metode", ["cash","bank"], key=f"metode{i}")
 
-                if st.button("Simpan", key=f"simpan{i}"):
+                if st.button("Simpan Pembayaran", key=f"simpan{i}"):
                     c.execute("""
                         INSERT INTO pembayaran (owner,jumlah,metode)
                         VALUES (%s,%s,%s)
                     """, (owner, bayar, metode))
                     conn.commit()
-                    st.success("Masuk pembayaran")
+                    st.success("Pembayaran masuk")
 
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -198,7 +204,7 @@ elif menu == "Pengeluaran":
             VALUES (%s,%s,%s)
         """, (jumlah, metode, ket))
         conn.commit()
-        st.success("Disimpan")
+        st.success("Pengeluaran disimpan")
 
 # ================= CLOSING =================
 elif menu == "Closing":
