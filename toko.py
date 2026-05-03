@@ -85,6 +85,45 @@ elif menu == "Barang Masuk":
 
 # ================= BARANG KELUAR =================
 elif menu == "Barang Keluar":
+    st.markdown("---")
+    st.subheader("📋 Daftar Owner")
+
+    df_trans = get_data("SELECT * FROM transaksi")
+    df_bayar = get_data("SELECT * FROM pembayaran")
+
+    if not df_trans.empty:
+        owners = df_trans["owner"].unique()
+
+        for o in owners:
+            df_o = df_trans[df_trans["owner"] == o]
+            total = df_o["total"].sum()
+
+            df_b = df_bayar[df_bayar["owner"] == o] if not df_bayar.empty else pd.DataFrame()
+            sudah = df_b["jumlah"].sum() if not df_b.empty else 0
+
+            sisa = total - sudah
+
+            status = "✅ Lunas" if sisa <= 0 else "❌ Belum Lunas"
+
+            # tampilan horizontal
+            col1, col2, col3, col4, col5 = st.columns(5)
+
+            col1.markdown(f"**{o}**")
+            col2.write(f"Total: {int(total)}")
+            col3.write(f"Bayar: {int(sudah)}")
+            col4.write(f"Sisa: {int(sisa)}")
+            col5.write(status)
+
+            # klik detail
+            with st.expander(f"Detail {o}"):
+                st.write("📦 Transaksi:")
+                st.dataframe(df_o[["produk", "jumlah", "total"]])
+
+                if not df_b.empty:
+                    st.write("💳 Pembayaran:")
+                    st.dataframe(df_b[["jumlah", "metode"]])
+                else:
+                    st.write("Belum ada pembayaran")
     st.title("📤 Barang Keluar")
 
     df = get_data("SELECT * FROM produk")
