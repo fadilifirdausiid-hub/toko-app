@@ -109,9 +109,9 @@ elif menu == "Barang Keluar":
                       (jumlah, int(row["id"])))
 
             c.execute("""
-                INSERT INTO transaksi (owner,produk,jumlah,total,waktu)
+                INSERT INTO transaksi (owner,produk_id,jumlah,total,waktu)
                 VALUES (%s,%s,%s,%s,NOW())
-            """, (owner, produk, jumlah, total))
+            """, (owner, int(row["id"]), jumlah, total))
 
             conn.commit()
             st.success("Berhasil")
