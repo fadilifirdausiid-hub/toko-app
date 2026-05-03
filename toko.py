@@ -206,7 +206,7 @@ elif menu == "Owner Order":
             bayar = int(df_p[df_p["owner"] == owner]["jumlah"].sum()) if not df_p.empty else 0
             sisa = total - bayar
 
-            status = "✅ Lunas" if sisa <= 0 else "❌ Belum"
+            status = "✅ Lunas" if sisa <= 0 else "❌ Belum Lunas"
 
             c1, c2, c3, c4, c5 = st.columns([1,3,2,2,2])
             c1.write(i+1)
