@@ -22,9 +22,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ================= KONEKSI =================
-conn = psycopg2.connect(
-    "postgresql://postgres.xxx:Fadili161299@aws-xxx.pooler.supabase.com:5432/postgres"
-)
+conn = psycopg2.connect(st.secrets["DB_URL"])
 c = conn.cursor()
 
 # ================= CACHE =================
