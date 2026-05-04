@@ -1,7 +1,6 @@
 import streamlit as st
 import psycopg2
 import pandas as pd
-from datetime import datetime, date
 
 # ================= CONFIG =================
 st.set_page_config(page_title="Toko App", layout="wide")
@@ -26,7 +25,7 @@ menu = st.sidebar.selectbox("Menu", [
     "Barang Keluar",
     "Pembayaran",
     "Pengeluaran",
-    "Closing Harian"
+    "Closing"
 ])
 
 # ================= DASHBOARD =================
@@ -36,7 +35,7 @@ if menu == "Dashboard":
     df = get_data("SELECT * FROM produk")
 
     if not df.empty:
-        df["Masuk"] = df["stok"]
+        df["Masuk"] = df["stok_masuk"]
         df["Sisa"] = df["stok"]
 
         col1, col2 = st.columns(2)
@@ -49,8 +48,9 @@ if menu == "Dashboard":
         df_tampil.columns = ["Nama Produk", "Masuk", "Sisa"]
 
         st.dataframe(df_tampil, use_container_width=True)
+
     else:
-        st.warning("Belum ada data produk")
+        st.warning("Belum ada data")
 
 # ================= BARANG MASUK =================
 elif menu == "Barang Masuk":
@@ -66,15 +66,17 @@ elif menu == "Barang Masuk":
             data = c.fetchone()
 
             if data:
-                c.execute(
-                    "UPDATE produk SET stok = stok + %s WHERE id=%s",
-                    (int(jumlah), int(data[0]))
-                )
+                c.execute("""
+                    UPDATE produk 
+                    SET stok = stok + %s,
+                        stok_masuk = stok_masuk + %s
+                    WHERE id=%s
+                """, (int(jumlah), int(jumlah), int(data[0])))
             else:
-                c.execute(
-                    "INSERT INTO produk (nama,harga,stok) VALUES (%s,%s,%s)",
-                    (nama, int(harga), int(jumlah))
-                )
+                c.execute("""
+                    INSERT INTO produk (nama,harga,stok,stok_masuk)
+                    VALUES (%s,%s,%s,%s)
+                """, (nama, int(harga), int(jumlah), int(jumlah)))
 
             conn.commit()
             st.success("Barang masuk berhasil")
@@ -102,17 +104,15 @@ elif menu == "Barang Keluar":
                 else:
                     total = int(jumlah) * int(row["harga"])
 
-                    # kurangi stok
                     c.execute(
                         "UPDATE produk SET stok = stok - %s WHERE id=%s",
                         (int(jumlah), int(row["id"]))
                     )
 
-                    # simpan transaksi (AMAN)
                     c.execute("""
                         INSERT INTO transaksi (owner, produk, jumlah, total)
                         VALUES (%s,%s,%s,%s)
-                    """, (str(owner), str(produk), int(jumlah), int(total)))
+                    """, (owner, produk, int(jumlah), int(total)))
 
                     conn.commit()
                     st.success("Barang keluar berhasil")
@@ -171,29 +171,32 @@ elif menu == "Pengeluaran":
             st.error(f"ERROR: {e}")
 
 # ================= CLOSING =================
-elif menu == "Closing Harian":
-    st.title("📅 Closing Harian")
+elif menu == "Closing":
+    st.title("📊 Closing")
 
-    try:
-        df_trans = get_data("SELECT * FROM pembayaran")
-        df_keluar = get_data("SELECT * FROM pengeluaran")
+    df_produk = get_data("SELECT * FROM produk")
+    df_trans = get_data("SELECT * FROM transaksi")
+    df_bayar = get_data("SELECT * FROM pembayaran")
+    df_keluar = get_data("SELECT * FROM pengeluaran")
 
-        masuk = df_trans["jumlah"].sum() if not df_trans.empty else 0
-        keluar = df_keluar["jumlah"].sum() if not df_keluar.empty else 0
+    total_masuk_barang = (df_produk["stok_masuk"] * df_produk["harga"]).sum() if not df_produk.empty else 0
+    nilai_sisa = (df_produk["stok"] * df_produk["harga"]).sum() if not df_produk.empty else 0
+    total_penjualan = df_trans["total"].sum() if not df_trans.empty else 0
+    total_bayar = df_bayar["jumlah"].sum() if not df_bayar.empty else 0
+    pengeluaran = df_keluar["jumlah"].sum() if not df_keluar.empty else 0
 
-        saldo = masuk - keluar
+    hutang = total_penjualan - total_bayar
+    saldo = total_bayar - pengeluaran
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("💰 Uang Masuk", int(masuk))
-        col2.metric("💸 Pengeluaran", int(keluar))
-        col3.metric("📊 Saldo", int(saldo))
+    col1, col2, col3 = st.columns(3)
+    col1.metric("📦 Nilai Barang Masuk", int(total_masuk_barang))
+    col2.metric("📦 Nilai Sisa Stok", int(nilai_sisa))
+    col3.metric("💰 Penjualan", int(total_penjualan))
 
-        st.markdown("---")
-        st.subheader("Pembayaran")
-        st.dataframe(df_trans, use_container_width=True)
+    col4, col5, col6 = st.columns(3)
+    col4.metric("💳 Uang Masuk", int(total_bayar))
+    col5.metric("💸 Pengeluaran", int(pengeluaran))
+    col6.metric("📊 Saldo", int(saldo))
 
-        st.subheader("Pengeluaran")
-        st.dataframe(df_keluar, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"ERROR: {e}")
+    st.markdown("---")
+    st.metric("❗ Total Hutang Owner", int(hutang))
