@@ -32,40 +32,26 @@ if menu == "Dashboard":
         st.warning("Belum ada data produk")
     else:
         # ====== DATA ======
-        df["stok_masuk"] = df["stok"]   # sementara
-        df["stok_sisa"] = df["stok"]
+        df["Masuk"] = df["stok"]   # sementara
+        df["Sisa"] = df["stok"]
 
-        total_masuk = int(df["stok_masuk"].sum())
-        total_sisa = int(df["stok_sisa"].sum())
+        total_masuk = int(df["Masuk"].sum())
+        total_sisa = int(df["Sisa"].sum())
 
-        # ====== HEADER ======
+        # ====== HEADER TOTAL ======
         col1, col2 = st.columns(2)
-
-        col1.markdown("## 📥 STOK MASUK")
-        col1.metric("Total Masuk", total_masuk)
-
-        col2.markdown("## 📦 STOK SISA")
-        col2.metric("Total Sisa", total_sisa)
+        col1.metric("📥 Total Stok Masuk", total_masuk)
+        col2.metric("📦 Total Stok Sisa", total_sisa)
 
         st.markdown("---")
 
-        # ====== DETAIL ======
-        st.subheader("📦 Detail Stok per Produk")
+        # ====== TABEL UTAMA ======
+        st.subheader("📦 Stok Produk")
 
-        for i, row in df.iterrows():
-            col1, col2, col3 = st.columns([3, 2, 2])
+        df_tampil = df[["nama", "Masuk", "Sisa"]]
+        df_tampil.columns = ["Nama Produk", "Masuk", "Sisa"]
 
-            col1.markdown(f"**{row['nama']}**")
-
-            col2.markdown(
-                f"<div style='text-align:center'><b>Masuk</b><br>{int(row['stok_masuk'])}</div>",
-                unsafe_allow_html=True
-            )
-
-            col3.markdown(
-                f"<div style='text-align:center'><b>Sisa</b><br>{int(row['stok_sisa'])}</div>",
-                unsafe_allow_html=True
-            )
+        st.dataframe(df_tampil, use_container_width=True)
 
 # ================= BARANG MASUK =================
 elif menu == "Barang Masuk":
