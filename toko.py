@@ -1,10 +1,9 @@
 import streamlit as st
 import psycopg2
 import pandas as pd
-from datetime import datetime
 
 # ================= CONFIG =================
-st.set_page_config(page_title="Aplikasi Toko", layout="wide")
+st.set_page_config(page_title="Toko App", layout="wide")
 
 # ================= KONEKSI =================
 conn = psycopg2.connect(
@@ -27,42 +26,46 @@ menu = st.sidebar.selectbox("Menu", [
 if menu == "Dashboard":
     st.title("📊 Dashboard Toko")
 
-    df_produk = get_data("SELECT * FROM produk")
-    df_keu = get_data("SELECT * FROM keuangan")
+    df = get_data("SELECT * FROM produk")
 
-    # ================= RINGKASAN =================
-    total_stok = int(df_produk["stok"].sum()) if not df_produk.empty else 0
-
-    cash = int(df_keu[df_keu["metode"]=="cash"]["jumlah"].sum()) if not df_keu.empty else 0
-    bank = int(df_keu[df_keu["metode"]=="bank"]["jumlah"].sum()) if not df_keu.empty else 0
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("📦 Total Produk", len(df_produk))
-    col2.metric("📊 Total Stok", total_stok)
-    col3.metric("💵 Cash", f"Rp {cash:,}")
-
-    st.metric("🏦 Bank", f"Rp {bank:,}")
-
-    st.markdown("---")
-
-    # ================= STOK PER PRODUK =================
-    st.subheader("📦 Stok Barang per Merk")
-
-    if not df_produk.empty:
-        df_view = df_produk[["nama", "stok"]]
-        df_view.columns = ["Nama Produk", "Sisa Stok"]
-
-        st.dataframe(df_view, use_container_width=True)
-
-        # tampil per baris biar lebih jelas
-        st.markdown("### Detail Stok:")
-        for i, row in df_view.iterrows():
-            col1, col2 = st.columns([3,1])
-            col1.write(f"🔹 {row['Nama Produk']}")
-            col2.write(f"📦 {int(row['Sisa Stok'])}")
-
-    else:
+    if df.empty:
         st.warning("Belum ada data produk")
+    else:
+        # ====== DATA ======
+        df["stok_masuk"] = df["stok"]   # sementara
+        df["stok_sisa"] = df["stok"]
+
+        total_masuk = int(df["stok_masuk"].sum())
+        total_sisa = int(df["stok_sisa"].sum())
+
+        # ====== HEADER ======
+        col1, col2 = st.columns(2)
+
+        col1.markdown("## 📥 STOK MASUK")
+        col1.metric("Total Masuk", total_masuk)
+
+        col2.markdown("## 📦 STOK SISA")
+        col2.metric("Total Sisa", total_sisa)
+
+        st.markdown("---")
+
+        # ====== DETAIL ======
+        st.subheader("📦 Detail Stok per Produk")
+
+        for i, row in df.iterrows():
+            col1, col2, col3 = st.columns([3, 2, 2])
+
+            col1.markdown(f"**{row['nama']}**")
+
+            col2.markdown(
+                f"<div style='text-align:center'><b>Masuk</b><br>{int(row['stok_masuk'])}</div>",
+                unsafe_allow_html=True
+            )
+
+            col3.markdown(
+                f"<div style='text-align:center'><b>Sisa</b><br>{int(row['stok_sisa'])}</div>",
+                unsafe_allow_html=True
+            )
 
 # ================= BARANG MASUK =================
 elif menu == "Barang Masuk":
@@ -73,18 +76,15 @@ elif menu == "Barang Masuk":
     jumlah = st.number_input("Jumlah Masuk", 0)
 
     if st.button("Simpan"):
-        # cek apakah produk sudah ada
-        c.execute("SELECT id, stok FROM produk WHERE nama=%s", (nama,))
+        c.execute("SELECT id FROM produk WHERE nama=%s", (nama,))
         data = c.fetchone()
 
         if data:
-            # update stok
             c.execute(
                 "UPDATE produk SET stok = stok + %s WHERE id=%s",
                 (jumlah, data[0])
             )
         else:
-            # insert baru
             c.execute(
                 "INSERT INTO produk (nama,harga,stok) VALUES (%s,%s,%s)",
                 (nama, int(harga), int(jumlah))
@@ -116,4 +116,5 @@ elif menu == "Barang Keluar":
                     (jumlah, int(row["id"]))
                 )
                 conn.commit()
+
                 st.success("Barang keluar berhasil")
