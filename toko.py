@@ -8,7 +8,7 @@ st.set_page_config(page_title="Aplikasi Toko", layout="wide")
 
 # ================= KONEKSI =================
 conn = psycopg2.connect(
-    "postgresql://postgres.slikespgjmlzpgqjimno:PASSWORD_KAMU@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
+    "postgresql://postgres.slikespgjmlzpgqjimno:Fadili161299@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
 )
 c = conn.cursor()
 
